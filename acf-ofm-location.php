@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name: ACF OpenFreeMap Location Field
+ * Plugin Name: ACF OFM Location
  * Plugin URI: https://github.com/eightam/acf-ofm-location
  * Description: A simple location field for ACF using MapLibre GL and OpenFreeMap with geocoding support
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: 8am GmbH
  * Author URI: https://8am.ch
  * License: GPL v2 or later
