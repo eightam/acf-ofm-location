@@ -28,14 +28,98 @@ class ACF_Field_OFM_Location extends acf_field {
 			'default_lat'        => '',
 			'default_lng'        => '',
 			'default_zoom'       => '',
-			'expose_components'  => array( 'full_address', 'street', 'number', 'city', 'post_code', 'country', 'state', 'lat', 'lng' ),
 		);
 
 		parent::__construct();
 
 		// Create companion field groups when a field group with location field is saved
 		add_action( 'acf/update_field_group', array( $this, 'create_companion_field_group' ), 10, 1 );
-		add_action( 'acf/init', array( $this, 'ensure_companion_field_groups' ), 20 );
+		add_action( 'acf/init', array( $this, 'ensure_companion_field_groups' ), 5 );
+
+		// Prevent ACF from auto-saving component fields (we handle it manually)
+		add_filter( 'acf/pre_update_value', array( $this, 'prevent_component_field_auto_save' ), 10, 4 );
+
+		// Hide component fields from editor UI (but keep them for Blocksy/theme builders)
+		add_filter( 'acf/prepare_field', array( $this, 'hide_component_fields_in_editor' ), 10, 1 );
+
+		// Hide companion field groups from post editor
+		add_filter( 'acf/get_field_groups', array( $this, 'hide_companion_field_groups_in_editor' ), 10, 1 );
+	}
+
+	/**
+	 * Hide companion field groups from post editor
+	 *
+	 * Companion field groups should not appear in the post editor.
+	 * But they must remain available for theme builders (AJAX requests).
+	 *
+	 * @param array $field_groups Array of field groups.
+	 * @return array Filtered field groups.
+	 */
+	public function hide_companion_field_groups_in_editor( $field_groups ) {
+		// Only filter in admin post editor, not during AJAX (theme builders need them)
+		if ( ! is_admin() || wp_doing_ajax() ) {
+			return $field_groups;
+		}
+
+		// Filter out companion field groups
+		$filtered_groups = array();
+		foreach ( $field_groups as $field_group ) {
+			$key = isset( $field_group['key'] ) ? $field_group['key'] : '';
+
+			// Skip companion field groups (contain '_components' in key)
+			if ( strpos( $key, 'group_ofm_location_' ) === 0 && strpos( $key, '_components' ) !== false ) {
+				continue;
+			}
+
+			$filtered_groups[] = $field_group;
+		}
+
+		return $filtered_groups;
+	}
+
+	/**
+	 * Hide component fields from the post editor
+	 *
+	 * Component fields should not be editable in the admin - they're auto-populated.
+	 * But they need to remain visible to theme builders like Blocksy.
+	 *
+	 * @param array|false $field The field array.
+	 * @return array|false The field array or false to hide.
+	 */
+	public function hide_component_fields_in_editor( $field ) {
+		// Only hide in admin post editor, not in customizer or frontend
+		if ( ! is_admin() || wp_doing_ajax() ) {
+			return $field;
+		}
+
+		// Check if this field belongs to a companion field group
+		if ( isset( $field['parent'] ) && strpos( $field['parent'], 'group_ofm_location_' ) === 0 && strpos( $field['parent'], '_components' ) !== false ) {
+			return false; // Hide from editor
+		}
+
+		return $field;
+	}
+
+	/**
+	 * Prevent ACF from automatically saving component fields
+	 *
+	 * Component fields are managed exclusively by update_sub_fields()
+	 *
+	 * @param null  $check   Whether to short-circuit the update.
+	 * @param mixed $value   The value to save.
+	 * @param int   $post_id The post ID.
+	 * @param array $field   The field array.
+	 * @return null|mixed Null to let ACF continue, or a value to short-circuit.
+	 */
+	public function prevent_component_field_auto_save( $check, $value, $post_id, $field ) {
+		// Check if this field's parent is a companion field group
+		if ( isset( $field['parent'] ) && strpos( $field['parent'], 'group_ofm_location_' ) === 0 && strpos( $field['parent'], '_components' ) !== false ) {
+			// Return null to prevent ACF from saving this field
+			// We'll handle it in update_sub_fields() instead
+			return null;
+		}
+
+		return $check;
 	}
 
 	/**
@@ -146,7 +230,7 @@ class ACF_Field_OFM_Location extends acf_field {
 			'key'                   => $companion_group_key,
 			'title'                 => $field_label . ' (Components)',
 			'fields'                => $component_fields,
-			'location'              => $parent_group['location'], // Same location rules as parent
+			'location'              => $parent_group['location'], // Same location rules so Blocksy recognizes them
 			'menu_order'            => $parent_group['menu_order'] + 1,
 			'position'              => 'normal',
 			'style'                 => 'default',
@@ -154,7 +238,7 @@ class ACF_Field_OFM_Location extends acf_field {
 			'instruction_placement' => 'label',
 			'hide_on_screen'        => '',
 			'active'                => true,
-			'description'           => 'Auto-generated component fields for ' . $field_label . '. Do not edit manually.',
+			'description'           => 'Auto-generated component fields for ' . $field_label . '. Values managed automatically.',
 			'private'               => true, // Hide from ACF admin UI
 		);
 
@@ -262,29 +346,6 @@ class ACF_Field_OFM_Location extends acf_field {
 				'step'         => '1',
 				'min'          => '0',
 				'max'          => '20',
-			)
-		);
-
-		// Expose Components
-		acf_render_field_setting(
-			$field,
-			array(
-				'label'        => __( 'Expose Individual Components', 'acf-ofm-location' ),
-				'instructions' => __( 'Select which components should be available as individual ACF fields (for use in theme builders like Blocksy)', 'acf-ofm-location' ),
-				'type'         => 'checkbox',
-				'name'         => 'expose_components',
-				'choices'      => array(
-					'full_address' => __( 'Full Address', 'acf-ofm-location' ),
-					'street'       => __( 'Street', 'acf-ofm-location' ),
-					'number'       => __( 'Number', 'acf-ofm-location' ),
-					'city'         => __( 'City', 'acf-ofm-location' ),
-					'post_code'    => __( 'Post Code', 'acf-ofm-location' ),
-					'country'      => __( 'Country', 'acf-ofm-location' ),
-					'state'        => __( 'State', 'acf-ofm-location' ),
-					'lat'          => __( 'Latitude', 'acf-ofm-location' ),
-					'lng'          => __( 'Longitude', 'acf-ofm-location' ),
-				),
-				'layout'       => 'vertical',
 			)
 		);
 	}
