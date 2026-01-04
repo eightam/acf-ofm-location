@@ -406,8 +406,14 @@ class ACF_Field_OFM_Location extends acf_field {
 			'data-default-zoom'  => esc_attr( $default_zoom ),
 		);
 
+		// Build data attributes string
+		$data_attrs_string = '';
+		foreach ( $data_attrs as $key => $value ) {
+			$data_attrs_string .= ' ' . esc_attr( $key ) . '="' . esc_attr( $value ) . '"';
+		}
+
 		?>
-		<div class="acf-ofm-location-field" <?php echo implode( ' ', array_map( function( $k, $v ) { return $k . '="' . $v . '"'; }, array_keys( $data_attrs ), $data_attrs ) ); ?>>
+		<div class="acf-ofm-location-field"<?php echo $data_attrs_string; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Values escaped in loop above. ?>>
 
 			<div class="acf-ofm-location-layout">
 				<!-- Map Container -->
